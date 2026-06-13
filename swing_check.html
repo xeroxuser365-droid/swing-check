@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>スイング その場チェック</title>
+<style>
+  :root{ --blue:#0d47a1; --green:#2e7d32; --amber:#f9a825; --red:#c62828; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Yu Gothic','Hiragino Sans','Meiryo',sans-serif;background:#0f1216;color:#eee}
+  header{background:var(--blue);padding:14px 16px;position:sticky;top:0;z-index:5}
+  header h1{margin:0;font-size:18px}
+  header .sub{font-size:12px;opacity:.85}
+  .wrap{max-width:540px;margin:0 auto;padding:16px}
+  .panel{background:#1a1f27;border-radius:12px;padding:14px;margin:12px 0}
+  label{display:block;font-size:13px;margin:8px 0 3px;color:#bcd}
+  input,select{width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#0f1216;color:#eee;font-size:16px}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  button{width:100%;padding:16px;border:none;border-radius:12px;font-size:18px;font-weight:700;color:#fff;background:var(--blue);margin-top:12px}
+  button:disabled{opacity:.5}
+  button.secondary{background:#37424f}
+  .big{font-size:54px;font-weight:800;text-align:center;line-height:1.1}
+  .big span{font-size:22px}
+  .badge{display:inline-block;color:#fff;border-radius:14px;padding:4px 16px;font-size:16px;font-weight:700}
+  .kpis{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .kpi{flex:1;min-width:120px;background:#0f1216;border-radius:10px;padding:10px;text-align:center}
+  .kpi .v{font-size:22px;font-weight:700;color:#9cf}.kpi .l{font-size:11px;color:#9ab}
+  .keyframes{display:flex;gap:8px;overflow-x:auto;margin-top:10px}
+  .keyframes figure{margin:0;flex:0 0 46%}
+  .keyframes canvas{width:100%;border-radius:8px;background:#000}
+  .keyframes figcaption{font-size:12px;text-align:center;color:#9ab;margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+  td{padding:6px 4px;border-bottom:1px solid #2a313b}td.k{color:#9ab}td.v{text-align:right;font-weight:700}
+  #progress{height:8px;background:#0f1216;border-radius:4px;overflow:hidden;margin-top:10px;display:none}
+  #progress div{height:100%;width:0;background:var(--blue);transition:width .1s}
+  .muted{color:#8a97a6;font-size:12px;line-height:1.6}
+  .hidden{display:none}
+  .err{background:#3a1d1d;border-left:4px solid var(--red);padding:10px;border-radius:8px;color:#fbb}
+  details{background:#1a1f27;border-radius:12px;padding:6px 14px;margin:12px 0}
+  details summary{cursor:pointer;font-weight:700;color:#9cf;padding:8px 0}
+  #status{font-size:13px;color:#9cf;margin-top:8px;min-height:18px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⛳ スイング その場チェック</h1>
+  <div class="sub">DTL(後方)スロー動画から 早期伸展(EE) を即時診断 ／ スマホ単独・オフライン</div>
+</header>
+
+<div class="wrap">
+  <div class="panel" id="inputPanel">
+    <label>① スイング動画を選択（直前に撮った1球分のスロー動画）</label>
+    <input type="file" id="file" accept="video/*" capture="environment">
+    <details>
+      <summary>⚙ 設定</summary>
+      <div class="row">
+        <div><label>身長(cm)</label><input type="number" id="height" value="170" min="120" max="220"></div>
+        <div><label>利き手</label>
+          <select id="hand"><option value="right">右</option><option value="left">左</option></select></div>
+      </div>
+      <div class="row">
+        <div><label>モデル</label>
+          <select id="model">
+            <option value="full">full（標準・推奨）</option>
+            <option value="lite">lite（軽量・高速）</option>
+          </select></div>
+        <div><label>間引き(stride)</label>
+          <select id="stride"><option>2</option><option selected>3</option></select></div>
+      </div>
+      <div class="muted" style="margin-top:8px">設定はURLパラメータでも指定可: <code>?height=172&hand=right&model=lite</code></div>
+    </details>
+    <button id="run" disabled>② 解析する</button>
+    <div id="progress"><div></div></div>
+    <div id="status"></div>
+  </div>
+
+  <div id="errBox" class="panel err hidden"></div>
+
+  <div id="resultPanel" class="hidden">
+    <div class="panel">
+      <div class="muted" style="text-align:center">早期伸展（インパクト時の前方移動量）</div>
+      <div class="big" id="eeBig">– <span>cm</span></div>
+      <div style="text-align:center;margin-top:8px"><span class="badge" id="eeBadge">–</span></div>
+      <div class="keyframes" id="keyframes"></div>
+      <table id="metricsTable"></table>
+    </div>
+
+    <details open>
+      <summary>📖 見方</summary>
+      <div class="muted">
+        <b>EE</b>: 骨盤がボール方向へ出た量。&lt;3cm 良好 / 3–6cm 要注意 / &gt;6cm 顕著。<br>
+        <b>手の通り道</b>: ダウン(赤)がバック(青)の内側〜同じ道なら良。外へ被ると<b>オーバー・ザ・トップ</b>。<br>
+        <b>頭の上下/前後</b>: ＋＝伸び上がり / ボールへ突っ込み。EEの裏付け。<br>
+        <b>テンポ比</b>: バック:ダウン。理想3.0。<br>
+        ※インパクトは手首速度ピークで自動検出（打球音不要）。
+      </div>
+    </details>
+
+    <button class="secondary" id="again">↺ もう1球</button>
+  </div>
+</div>
+
+<canvas id="work" class="hidden"></canvas>
+<!-- display:none の video は seek 後に再描画されないため、画面外で不可視レンダリング -->
+<video id="vid" muted playsinline style="position:fixed;right:0;bottom:0;width:90px;height:160px;opacity:0.02;z-index:-1;pointer-events:none"></video>
+
+<script type="module">
+// オフライン完結のため vendor 同梱の MediaPipe を相対パスで読み込む
+import { FilesetResolver, PoseLandmarker } from "./vendor/vision_bundle.js";
+
+// ローカル同梱を既定。無ければCDN/Storageへフォールバック（初回オンライン）
+const LOCAL_WASM = "./vendor/wasm";
+const ONLINE_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm";
+const LOCAL_MODEL = { full: "./models/pose_landmarker_full.task", lite: "./models/pose_landmarker_lite.task" };
+const MODEL_URL = {
+  full: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
+  lite: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+};
+
+const VIS_THR = 0.5, MIN_SWING_SPEED_NORM = 0.005, OVER_TOP_CM = 3.0;
+const EE_THR = [3.0, 6.0];
+const CONNECTIONS = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],
+  [23,25],[25,27],[27,31],[24,26],[26,28],[28,32],[0,11],[0,12]];
+
+const $ = id => document.getElementById(id);
+const qp = new URLSearchParams(location.search);
+let selectedFile = null, landmarker = null, currentModel = null;
+
+// URLパラメータで設定を初期化
+if (qp.get("height")) $("height").value = qp.get("height");
+if (qp.get("hand")) $("hand").value = qp.get("hand");
+if (qp.get("model")) $("model").value = qp.get("model");
+if (qp.get("stride")) $("stride").value = qp.get("stride");
+
+function setStatus(t){ $("status").textContent = t; }
+function showErr(t){ $("errBox").textContent = "⚠ " + t; $("errBox").classList.remove("hidden"); }
+function clearErr(){ $("errBox").classList.add("hidden"); }
+
+// ---- MediaPipe 初期化（モデル別にキャッシュ）----
+async function ensureLandmarker(modelKey){
+  if (landmarker && currentModel === modelKey) return landmarker;
+  if (landmarker){ landmarker.close(); landmarker = null; }
+  setStatus("モデル読み込み中…（初回はダウンロード）");
+  // ローカル同梱を優先、無ければオンライン
+  let wasmPath = ONLINE_WASM, modelPath = MODEL_URL[modelKey];
+  try { if ((await fetch(LOCAL_WASM + "/vision_wasm_internal.js", {method:"HEAD"})).ok) wasmPath = LOCAL_WASM; } catch(e){}
+  try { if ((await fetch(LOCAL_MODEL[modelKey], {method:"HEAD"})).ok) modelPath = LOCAL_MODEL[modelKey]; } catch(e){}
+  const vision = await FilesetResolver.forVisionTasks(wasmPath);
+  landmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: { modelAssetPath: modelPath },
+    runningMode: "VIDEO", numPoses: 1,
+    minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+  });
+  currentModel = modelKey;
+  return landmarker;
+}
+
+// ---- 数値ユーティリティ（metrics.py の移植）----
+const mean = a => a.reduce((s,x)=>s+x,0)/a.length;
+function median(a){ const b=[...a].filter(x=>Number.isFinite(x)).sort((p,q)=>p-q); if(!b.length) return NaN;
+  const m=b.length>>1; return b.length%2?b[m]:(b[m-1]+b[m])/2; }
+function fillNaN(a){ // 線形補間 + 前後埋め
+  const x=[...a]; let last=null;
+  for(let i=0;i<x.length;i++) if(Number.isFinite(x[i])) last=i; // noop, ensure scan
+  // forward/back fill via interpolation between known points
+  let prev=null;
+  for(let i=0;i<x.length;i++){
+    if(Number.isFinite(x[i])){
+      if(prev!==null && i-prev>1){ const a0=x[prev],a1=x[i]; for(let j=prev+1;j<i;j++) x[j]=a0+(a1-a0)*(j-prev)/(i-prev); }
+      prev=i;
+    }
+  }
+  // leading / trailing
+  let f=x.findIndex(Number.isFinite); if(f<0) return x.map(()=>0);
+  for(let i=0;i<f;i++) x[i]=x[f];
+  let l=x.length-1; while(l>=0 && !Number.isFinite(x[l])) l--;
+  for(let i=l+1;i<x.length;i++) x[i]=x[l];
+  return x;
+}
+function smooth(a, win=7){ // 中央移動平均（savgolの簡易代替）
+  const x=fillNaN(a), n=x.length; if(n<3||win<3) return x;
+  let w=Math.min(win,n); if(w%2===0) w--; if(w<3) return x; const h=w>>1, y=new Array(n);
+  for(let i=0;i<n;i++){ let s=0,c=0; for(let j=-h;j<=h;j++){const k=i+j; if(k>=0&&k<n){s+=x[k];c++;}} y[i]=s/c; }
+  return y;
+}
+const grad = a => a.map((_,i)=> i===0 ? a[1]-a[0] : i===a.length-1 ? a[i]-a[i-1] : (a[i+1]-a[i-1])/2);
+const argmax = a => a.reduce((bi,x,i,arr)=> x>arr[bi]?i:bi, 0);
+const argmin = a => a.reduce((bi,x,i,arr)=> x<arr[bi]?i:bi, 0);
+
+// 2x2 共分散の主成分方向→水平からの傾き角(deg, 0-90)
+function fitAngle(xs, ys){
+  if(xs.length<3) return NaN;
+  const mx=mean(xs), my=mean(ys); let cxx=0,cyy=0,cxy=0;
+  for(let i=0;i<xs.length;i++){const dx=xs[i]-mx,dy=ys[i]-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy;}
+  const n=xs.length; cxx/=n; cyy/=n; cxy/=n;
+  // 最大固有値の固有ベクトル
+  const tr=cxx+cyy, det=cxx*cyy-cxy*cxy, l=tr/2+Math.sqrt(Math.max(0,tr*tr/4-det));
+  let vx, vy; if(Math.abs(cxy)>1e-12){ vx=l-cyy; vy=cxy; } else { vx = cxx>=cyy?1:0; vy = cxx>=cyy?0:1; }
+  const nrm=Math.hypot(vx,vy)||1; vx/=nrm; vy/=nrm;
+  return Math.atan2(Math.abs(vy), Math.abs(vx)) * 180/Math.PI;
+}
+function interpAt(xs, ys, qy){ // ysに対するxsを qy で線形補間（ysソート）
+  const idx=ys.map((y,i)=>i).sort((a,b)=>ys[a]-ys[b]);
+  const sy=idx.map(i=>ys[i]), sx=idx.map(i=>xs[i]);
+  return qy.map(q=>{
+    if(q<=sy[0]) return sx[0]; if(q>=sy[sy.length-1]) return sx[sx.length-1];
+    let k=1; while(k<sy.length && sy[k]<q) k++;
+    const t=(q-sy[k-1])/((sy[k]-sy[k-1])||1); return sx[k-1]+(sx[k]-sx[k-1])*t;
+  });
+}
+
+// ---- 指標計算（frames: [{t, lm:[{x,y,z,visibility}*33]}], W,H ----
+function computeMetrics(frames, W, H, fps, cfg){
+  const n=frames.length;
+  if(n<8) throw new Error("フレーム数が不足しています（短すぎる動画）");
+  const col=(i,key)=>frames.map(f=>f.lm?f.lm[i][key]:NaN);
+  const centerPx=(a,b,key,size)=>frames.map(f=> f.lm?((f.lm[a][key]+f.lm[b][key])/2*size):NaN);
+
+  const vis = i => frames.map(f=> f.lm?f.lm[i].visibility:0);
+  const validMask = frames.map(f=> f.lm && f.lm[23].visibility>VIS_THR && f.lm[24].visibility>VIS_THR);
+  const validRate = validMask.filter(Boolean).length/n;
+  if(validRate<0.3) throw new Error(`骨格検出が不十分(有効${Math.round(validRate*100)}%)。人物が枠内・全身が映るように。`);
+
+  const hipX=smooth(centerPx(23,24,"x",W)), hipY=smooth(centerPx(23,24,"y",H));
+  const shoX=smooth(centerPx(11,12,"x",W)), shoY=smooth(centerPx(11,12,"y",H));
+  const visL=mean(vis(15)), visR=mean(vis(16)); const wi = visL>=visR?15:16;
+  // 手首は速度ピークを潰さないよう軽い平滑（サンプルfpsに応じ約0.07s幅）
+  const wWin=Math.max(3, Math.round(0.07*fps/cfg.stride));
+  const wristX=smooth(col(wi,"x").map(v=>v*W), wWin), wristY=smooth(col(wi,"y").map(v=>v*H), wWin);
+
+  const speed=grad(wristX).map((dx,i)=>Math.hypot(dx,grad(wristY)[i]));
+  const gy=grad(wristY);
+  const speedV=grad(wristX).map((dx,i)=>validMask[i]?Math.hypot(dx,gy[i]):0);
+
+  const impact=argmax(speedV);
+  // stride 補正: speedV は処理フレーム間の変位なので /stride で毎フレーム換算
+  const peakNorm=(speedV[impact]/cfg.stride)/H;
+  if(peakNorm<MIN_SWING_SPEED_NORM)
+    throw new Error(`スイングを検出できません（手首の動きが小さい）。1球分のスイング動画を選んでください。`);
+
+  const fpsEff=fps/cfg.stride;
+  const lookback=Math.round(1.5*fpsEff);
+  const lo=Math.max(0,impact-lookback);
+  const seg=wristY.slice(lo,impact+1);
+  let top = impact>lo ? lo+argmin(seg) : Math.max(lo,impact-1);
+  top=Math.min(Math.max(top,lo),Math.max(lo,impact-1));
+  // takeaway(≒address)=トップ直前の手首最下点(yが最大)
+  let takeaway = top>lo ? lo+argmax(wristY.slice(lo,top+1)) : lo;
+  takeaway=Math.min(takeaway,Math.max(lo,top-1));
+  const address=takeaway;
+
+  const swSeg=validMask.slice(takeaway,impact+1);
+  const swValid = impact>takeaway ? swSeg.filter(Boolean).length/swSeg.length : 0;
+  if(swValid<0.8) throw new Error(`スイング区間の骨格検出が不十分(${Math.round(swValid*100)}%)`);
+
+  const awLo=Math.max(0,takeaway-Math.round(0.4*fpsEff));
+  const awIdx=[]; for(let i=awLo;i<=takeaway;i++) awIdx.push(i);
+  const pick=(arr)=>awIdx.map(i=>arr[i]);
+
+  // cm換算: 鼻〜足首
+  const ankleVis=frames.map(f=>f.lm?(f.lm[27].visibility+f.lm[28].visibility)/2:0);
+  if(median(pick(ankleVis))<0.5) throw new Error("足首が映っておらずcm換算不可（全身が入る画角で撮影してください）");
+  const noseY=col(0,"y").map(v=>v*H);
+  const ankleY=centerPx(27,28,"y",H);
+  let refPx=median(awIdx.map(i=>ankleY[i]-noseY[i]));
+  if(!Number.isFinite(refPx)||refPx<=1) refPx=H*0.7;
+  const cmPerPx=cfg.height_cm/refPx;
+
+  // ボール方向符号: つま先 vs 足首
+  const toeX=centerPx(31,32,"x",W), ankleX=centerPx(27,28,"x",W);
+  let facing=median(awIdx.map(i=>toeX[i]-ankleX[i]));
+  let ballSign = facing>=0?1:-1;
+  if(Math.abs(facing)<1) ballSign = cfg.hand==="right"?1:-1;
+
+  const baselineX=median(pick(hipX));
+  const eeCm=hipX.map(x=>(x-baselineX)*ballSign*cmPerPx);
+  const eeAtImpact=eeCm[impact];
+  let eeMax=eeAtImpact, eeMaxTiming=100;
+  if(impact>top){ let mi=top; for(let i=top;i<=impact;i++) if(eeCm[i]>eeCm[mi]) mi=i;
+    eeMax=eeCm[mi]; eeMaxTiming=Math.round((mi-top)/(impact-top)*100); }
+
+  // 前傾
+  const spineLean=hipX.map((hx,i)=>Math.atan2((shoX[i]-hx)*ballSign, -(shoY[i]-hipY[i]))*180/Math.PI);
+  const addrLean=median(pick(spineLean)), impactLean=spineLean[impact];
+  const spineLoss=addrLean-impactLean;
+
+  const tempo = (impact-top)>0 ? (top-takeaway)/(impact-top) : NaN;
+
+  if(Math.abs(eeAtImpact)>50 || Math.abs(spineLoss)>60)
+    throw new Error(`指標が非現実的(EE=${eeAtImpact.toFixed(0)}cm)。骨格検出が乱れています。`);
+
+  // D1 スイングプレーン
+  const bx=wristX.slice(takeaway,top+1), by=wristY.slice(takeaway,top+1);
+  const dx=wristX.slice(top,impact+1), dy=wristY.slice(top,impact+1);
+  const angBack=fitAngle(bx,by), angDown=fitAngle(dx,dy);
+  let shiftCm=null, planeTag="—";
+  if(bx.length>=3 && dx.length>=3){
+    const yLo=Math.max(Math.min(...by),Math.min(...dy)), yHi=Math.min(Math.max(...by),Math.max(...dy));
+    if(yHi>yLo){
+      const ys=[...Array(12)].map((_,i)=>yLo+(yHi-yLo)*i/11);
+      const bxi=interpAt(bx,by,ys), dxi=interpAt(dx,dy,ys);
+      const shiftPx=median(ys.map((_,i)=>(dxi[i]-bxi[i])*ballSign));
+      shiftCm=shiftPx*cmPerPx;
+      planeTag = shiftCm>OVER_TOP_CM?"オーバー・ザ・トップ":(shiftCm<-OVER_TOP_CM?"インサイド(下から)":"オン・プレーン");
+    }
+  }
+
+  // D2 頭の動き
+  const noseXs=smooth(col(0,"x").map(v=>v*W)), noseYs=smooth(col(0,"y").map(v=>v*H));
+  const nXaddr=median(pick(noseXs)), nYaddr=median(pick(noseYs));
+  const headLift=(nYaddr-noseYs[impact])*cmPerPx;
+  const headLiftMax=(impact>takeaway)?(nYaddr-Math.min(...noseYs.slice(takeaway,impact+1)))*cmPerPx:headLift;
+  const headSway=(noseXs[impact]-nXaddr)*ballSign*cmPerPx;
+
+  const judge=Math.max(eeAtImpact,0);
+  const badge = judge<EE_THR[0]?"良好":(judge<EE_THR[1]?"要注意":"顕著");
+
+  return { events:{address,takeaway,top,impact}, fps, cmPerPx, ballSign, baselineXnorm:baselineX/W,
+    ee_at_impact_cm:+eeAtImpact.toFixed(2), ee_max_cm:+eeMax.toFixed(2), ee_max_timing:eeMaxTiming,
+    spine_loss_deg:+spineLoss.toFixed(1), tempo_ratio:+(tempo).toFixed(2), badge,
+    plane_angle_back_deg:+angBack.toFixed(1), plane_angle_down_deg:+angDown.toFixed(1),
+    plane_shift_cm: shiftCm===null?null:+shiftCm.toFixed(1), plane_tag:planeTag,
+    head_lift_impact_cm:+headLift.toFixed(1), head_lift_max_cm:+headLiftMax.toFixed(1),
+    head_sway_impact_cm:+headSway.toFixed(1),
+    wristIdx:wi };
+}
+
+// ---- 動画→フレーム抽出（seekベース）----
+async function extractFrames(file, modelKey, stride, onProg){
+  const lm = await ensureLandmarker(modelKey);
+  setStatus("解析中…（骨格抽出）");
+  const vid=$("vid");
+  vid.src = (typeof file==="string") ? file : URL.createObjectURL(file);
+  await new Promise((res,rej)=>{ vid.onloadeddata=res; vid.onerror=()=>rej(new Error("動画を読み込めません")); });
+  const W=vid.videoWidth, H=vid.videoHeight, dur=vid.duration, fps=120; // スロー想定（既定120fps）
+  const cv=$("work"); const scale=Math.min(1, 540/Math.max(W,H));
+  cv.width=Math.round(W*scale); cv.height=Math.round(H*scale);
+  const ctx=cv.getContext("2d",{willReadFrequently:true});
+  const dt=stride/fps, frames=[]; let lastTs=-1;
+  // seek 完了後に少し待ってフレーム描画を確実化（rAFはバックグラウンドtabで停止するため使わない）
+  const seek=t=>new Promise(r=>{ vid.onseeked=()=>setTimeout(r,15); vid.currentTime=t; });
+  for(let t=0; t<dur; t+=dt){
+    await seek(t);
+    ctx.drawImage(vid,0,0,cv.width,cv.height);
+    let ts=Math.round(t*1000); if(ts<=lastTs) ts=lastTs+1; lastTs=ts;
+    const res=lm.detectForVideo(cv, ts);
+    const lms = res.landmarks && res.landmarks.length ? res.landmarks[0] : null;
+    frames.push({ t, lm: lms });
+    if(onProg) onProg(Math.min(1, t/dur));
+  }
+  return { frames, W, H, fps, vid };
+}
+
+// ---- キーフレーム描画（骨格+基準線+骨盤）----
+async function drawKeyframe(canvas, vid, frame, baselineXnorm){
+  const W=vid.videoWidth,H=vid.videoHeight;
+  const scale=Math.min(1,360/Math.max(W,H)); canvas.width=W*scale; canvas.height=H*scale;
+  const ctx=canvas.getContext("2d");
+  await new Promise(r=>{vid.onseeked=()=>r(); vid.currentTime=frame.t;});
+  ctx.drawImage(vid,0,0,canvas.width,canvas.height);
+  if(!frame.lm) return;
+  const px=i=>[frame.lm[i].x*canvas.width, frame.lm[i].y*canvas.height];
+  if(baselineXnorm!=null){ ctx.strokeStyle="#ffc800"; ctx.lineWidth=2; const bx=baselineXnorm*canvas.width;
+    ctx.beginPath(); ctx.moveTo(bx,0); ctx.lineTo(bx,canvas.height); ctx.stroke(); }
+  ctx.strokeStyle="#19ff19"; ctx.lineWidth=2;
+  for(const [a,b] of CONNECTIONS){ if(frame.lm[a].visibility<0.3||frame.lm[b].visibility<0.3) continue;
+    const [ax,ay]=px(a),[bx,by]=px(b); ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke(); }
+  const cx=((frame.lm[23].x+frame.lm[24].x)/2)*canvas.width, cy=((frame.lm[23].y+frame.lm[24].y)/2)*canvas.height;
+  ctx.fillStyle="#ff00ff"; ctx.beginPath(); ctx.arc(cx,cy,5,0,7); ctx.fill();
+}
+
+const BADGE_COLOR={"良好":"#2e7d32","要注意":"#f9a825","顕著":"#c62828"};
+
+async function showResult(m, frames, vid){
+  $("inputPanel").classList.add("hidden"); $("resultPanel").classList.remove("hidden");
+  $("eeBig").innerHTML = `${m.ee_at_impact_cm.toFixed(1)} <span>cm</span>`;
+  const b=$("eeBadge"); b.textContent=m.badge; b.style.background=BADGE_COLOR[m.badge];
+  // キーフレーム
+  const kf=$("keyframes"); kf.innerHTML="";
+  const nearest=fi=>frames.reduce((bi,f,i)=>Math.abs(f.t-frames[fi].t)<Math.abs(frames[bi].t-frames[fi].t)?i:bi,0);
+  for(const [key,label] of [["address","アドレス"],["top","トップ"],["impact","インパクト"]]){
+    const fr=frames[m.events[key]]; if(!fr) continue;
+    const fig=document.createElement("figure"); const cv=document.createElement("canvas");
+    fig.appendChild(cv); const cap=document.createElement("figcaption"); cap.textContent=label; fig.appendChild(cap);
+    kf.appendChild(fig);
+    await drawKeyframe(cv, vid, fr, key==="impact"||key==="top"?m.baselineXnorm:m.baselineXnorm);
+  }
+  const planeShift = m.plane_shift_cm==null?"":` (${m.plane_shift_cm>=0?"+":""}${m.plane_shift_cm}cm)`;
+  $("metricsTable").innerHTML = `
+    <tr><td class="k">EE 最大</td><td class="v">${m.ee_max_cm} cm @ ${m.ee_max_timing}%</td></tr>
+    <tr><td class="k">前傾喪失</td><td class="v">${m.spine_loss_deg>=0?"+":""}${m.spine_loss_deg} °</td></tr>
+    <tr><td class="k">テンポ比</td><td class="v">${m.tempo_ratio}</td></tr>
+    <tr><td class="k">プレーン角(バック/ダウン)</td><td class="v">${m.plane_angle_back_deg}° / ${m.plane_angle_down_deg}°</td></tr>
+    <tr><td class="k">プレーン判定</td><td class="v">${m.plane_tag}${planeShift}</td></tr>
+    <tr><td class="k">頭の上下(伸び上がり)</td><td class="v">${m.head_lift_impact_cm>=0?"+":""}${m.head_lift_impact_cm} cm</td></tr>
+    <tr><td class="k">頭の前後(突っ込み)</td><td class="v">${m.head_sway_impact_cm>=0?"+":""}${m.head_sway_impact_cm} cm</td></tr>`;
+}
+
+async function analyze(file){
+  clearErr();
+  const cfg={ height_cm:+$("height").value||170, hand:$("hand").value,
+    stride:+$("stride").value||3 };
+  const modelKey=$("model").value;
+  $("run").disabled=true; $("progress").style.display="block";
+  const bar=$("progress").firstElementChild;
+  try{
+    setStatus("解析中…（骨格抽出）");
+    const { frames, W, H, fps, vid } = await extractFrames(file, modelKey, cfg.stride, p=>bar.style.width=(p*100)+"%");
+    setStatus("指標を計算中…");
+    const m = computeMetrics(frames, W, H, fps, cfg);
+    window.__result = m; // 自己テスト用
+    await showResult(m, frames, vid);
+    setStatus("");
+  }catch(e){
+    showErr(e.message||String(e)); window.__result={error:e.message||String(e)};
+    setStatus("");
+  }finally{
+    $("run").disabled=false; $("progress").style.display="none"; bar.style.width="0";
+  }
+}
+
+// ---- イベント ----
+$("file").addEventListener("change", e=>{ selectedFile=e.target.files[0]; $("run").disabled=!selectedFile; });
+$("run").addEventListener("click", ()=>{ if(selectedFile) analyze(selectedFile); });
+$("again").addEventListener("click", ()=>{ $("resultPanel").classList.add("hidden");
+  $("inputPanel").classList.remove("hidden"); $("file").value=""; selectedFile=null; $("run").disabled=true; });
+
+// ---- 自己テスト（PC検証用）: ?selftest=<videoUrl> ----
+if(qp.get("selftest")){
+  window.addEventListener("load", ()=>{ analyze(qp.get("selftest")); });
+}
+</script>
+</body>
+</html>
