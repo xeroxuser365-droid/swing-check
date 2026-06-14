@@ -49,8 +49,9 @@
 
 <div class="wrap">
   <div class="panel" id="inputPanel">
-    <label>① スイング動画を選択（直前に撮った1球分のスロー動画）</label>
-    <input type="file" id="file" accept="video/*" capture="environment">
+    <label>① スイング動画を選ぶ（標準カメラアプリで撮った1球分のスロー動画を選択）</label>
+    <input type="file" id="file" accept="video/*">
+    <div class="muted" style="margin-top:4px">※精度には<b>120fpsスローモーション</b>推奨。標準カメラアプリのスロー撮影で撮ってからここで選択（通常30fpsは精度が落ちます）。ファイル選択画面からカメラ起動も可。</div>
     <details>
       <summary>⚙ 設定</summary>
       <div class="row">
@@ -67,7 +68,12 @@
         <div><label>間引き(stride)</label>
           <select id="stride"><option>2</option><option selected>3</option></select></div>
       </div>
-      <div class="muted" style="margin-top:8px">設定はURLパラメータでも指定可: <code>?height=172&hand=right&model=lite</code></div>
+      <div class="row">
+        <div><label>撮影fps（録画に合わせる）</label>
+          <select id="fps"><option>240</option><option selected>120</option><option>60</option><option>30</option></select></div>
+        <div></div>
+      </div>
+      <div class="muted" style="margin-top:8px">設定はURLパラメータでも指定可: <code>?height=172&hand=right&model=lite&fps=120</code></div>
     </details>
     <button id="run" disabled>② 解析する</button>
     <div id="progress"><div></div></div>
@@ -131,6 +137,7 @@ if (qp.get("height")) $("height").value = qp.get("height");
 if (qp.get("hand")) $("hand").value = qp.get("hand");
 if (qp.get("model")) $("model").value = qp.get("model");
 if (qp.get("stride")) $("stride").value = qp.get("stride");
+if (qp.get("fps")) $("fps").value = qp.get("fps");
 
 function setStatus(t){ $("status").textContent = t; }
 function showErr(t){ $("errBox").textContent = "⚠ " + t; $("errBox").classList.remove("hidden"); }
@@ -332,7 +339,8 @@ async function extractFrames(file, modelKey, stride, onProg){
   const vid=$("vid");
   vid.src = (typeof file==="string") ? file : URL.createObjectURL(file);
   await new Promise((res,rej)=>{ vid.onloadeddata=res; vid.onerror=()=>rej(new Error("この動画を読み込めません（非対応の形式の可能性）。")); });
-  const W=vid.videoWidth, H=vid.videoHeight, dur=vid.duration, fps=120; // スロー想定（既定120fps）
+  const fps = +document.getElementById("fps").value || 120; // 撮影fps（設定値。録画に一致させる）
+  const W=vid.videoWidth, H=vid.videoHeight, dur=vid.duration;
   // 動画として有効か検証（写真・音声のみ・破損・極端に短い等を弾く）
   if(!W || !H){ throw new Error("動画ではないか、映像が読めません。スイングを撮った『動画』を選んでください（写真は不可）。"); }
   if(!isFinite(dur) || dur < 0.3){ throw new Error("動画が短すぎます。1球分（数秒）のスイング動画を選んでください。"); }
