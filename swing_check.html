@@ -35,7 +35,7 @@
   #progress div{height:100%;width:0;background:var(--blue);transition:width .1s}
   .muted{color:#8a97a6;font-size:12px;line-height:1.6}
   .hidden{display:none}
-  .err{background:#3a1d1d;border-left:4px solid var(--red);padding:10px;border-radius:8px;color:#fbb}
+  .err{background:#3a1d1d;border-left:4px solid var(--red);padding:10px;border-radius:8px;color:#fbb;white-space:pre-line}
   details{background:#1a1f27;border-radius:12px;padding:6px 14px;margin:12px 0}
   details summary{cursor:pointer;font-weight:700;color:#9cf;padding:8px 0}
   #status{font-size:13px;color:#9cf;margin-top:8px;min-height:18px}
@@ -331,22 +331,31 @@ async function extractFrames(file, modelKey, stride, onProg){
   setStatus("解析中…（骨格抽出）");
   const vid=$("vid");
   vid.src = (typeof file==="string") ? file : URL.createObjectURL(file);
-  await new Promise((res,rej)=>{ vid.onloadeddata=res; vid.onerror=()=>rej(new Error("動画を読み込めません")); });
+  await new Promise((res,rej)=>{ vid.onloadeddata=res; vid.onerror=()=>rej(new Error("この動画を読み込めません（非対応の形式の可能性）。")); });
   const W=vid.videoWidth, H=vid.videoHeight, dur=vid.duration, fps=120; // スロー想定（既定120fps）
+  // 動画として有効か検証（写真・音声のみ・破損・極端に短い等を弾く）
+  if(!W || !H){ throw new Error("動画ではないか、映像が読めません。スイングを撮った『動画』を選んでください（写真は不可）。"); }
+  if(!isFinite(dur) || dur < 0.3){ throw new Error("動画が短すぎます。1球分（数秒）のスイング動画を選んでください。"); }
   const cv=$("work"); const scale=Math.min(1, 540/Math.max(W,H));
   cv.width=Math.round(W*scale); cv.height=Math.round(H*scale);
   const ctx=cv.getContext("2d",{willReadFrequently:true});
-  const dt=stride/fps, frames=[]; let lastTs=-1;
+  const dt=stride/fps, frames=[]; let lastTs=-1; let detErr=0;
   // seek 完了後に少し待ってフレーム描画を確実化（rAFはバックグラウンドtabで停止するため使わない）
   const seek=t=>new Promise(r=>{ vid.onseeked=()=>setTimeout(r,15); vid.currentTime=t; });
   for(let t=0; t<dur; t+=dt){
     await seek(t);
-    ctx.drawImage(vid,0,0,cv.width,cv.height);
-    let ts=Math.round(t*1000); if(ts<=lastTs) ts=lastTs+1; lastTs=ts;
-    const res=lm.detectForVideo(cv, ts);
-    const lms = res.landmarks && res.landmarks.length ? res.landmarks[0] : null;
+    let lms=null;
+    try{
+      ctx.drawImage(vid,0,0,cv.width,cv.height);
+      let ts=Math.round(t*1000); if(ts<=lastTs) ts=lastTs+1; lastTs=ts;
+      const res=lm.detectForVideo(cv, ts);
+      lms = res.landmarks && res.landmarks.length ? res.landmarks[0] : null;
+    }catch(e){ detErr++; }  // 個別フレームの失敗は握りつぶして継続
     frames.push({ t, lm: lms });
     if(onProg) onProg(Math.min(1, t/dur));
+  }
+  if(frames.length && detErr === frames.length){
+    throw new Error("骨格を検出できませんでした。人物が全身で大きく映ったスイング動画を選んでください。");
   }
   return { frames, W, H, fps, vid };
 }
@@ -412,7 +421,13 @@ async function analyze(file){
     await showResult(m, frames, vid);
     setStatus("");
   }catch(e){
-    showErr(e.message||String(e)); window.__result={error:e.message||String(e)};
+    const raw = e && (e.message||String(e)) || "不明なエラー";
+    // 日本語の意図したメッセージはそのまま、低レベル例外は分かりやすく翻訳
+    const friendly = /[ぁ-んァ-ヶ一-龠]/.test(raw)
+      ? raw
+      : "解析できませんでした。1球分のスイングが大きく映ったスロー動画を選んでください（写真・極端に短い/非対応の動画は不可）。";
+    showErr(friendly + (friendly===raw ? "" : `\n（詳細: ${raw}）`));
+    window.__result={error:raw};
     setStatus("");
   }finally{
     $("run").disabled=false; $("progress").style.display="none"; bar.style.width="0";
