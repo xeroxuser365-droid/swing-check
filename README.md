@@ -30,16 +30,22 @@ PCとスマホを**同じWi-Fi**に接続した状態で：
 
 ---
 
-## (b) スマホ単体・完全オフライン：PWA化（将来対応）
+## (b) スマホ単体・完全オフライン：PWA（インストール済み）
 
-一度だけ https で配信してホーム画面に追加すれば、以降はオフラインで単体動作できます。
+`manifest.webmanifest` と `sw.js` が追加済みなので、以下の手順でホーム画面アプリとして使えます。
 
-1. `phone/` 一式を **https の静的ホスティング** に置く（例: GitHub Pages）。
-2. スマホChromeで開き、メニュー →「ホーム画面に追加」。
-3. Service Worker が HTML・`vendor/`・`models/` をキャッシュ → 以降は機内モードでも起動。
+**Android Chrome:**
+1. GitHub Pages の URL（`https://xeroxuser365-droid.github.io/swing-check/swing_check.html`）を Chrome で開く。
+2. Chrome メニュー（右上 ⋮）→「**ホーム画面に追加**」→ 追加。
+3. 初回読み込みで Service Worker が HTML・`vendor/`・`models/` を全てキャッシュします。
+4. 以降はホーム画面のアイコンから起動すれば **機内モード（オフライン）** でも動作します。
 
-> PWA化には `manifest.webmanifest` と `sw.js`（キャッシュ登録）の追加が必要です（未実装）。
-> 必要になったら作成します。
+**iOS Safari:**
+1. 同じ URL を Safari で開く。
+2. 共有ボタン（□↑）→「**ホーム画面に追加**」→ 追加。
+3. Service Worker のキャッシュにより、以降はオフラインで起動できます。
+
+> 初回は必ず Wi-Fi 等でオンライン状態で開いてください（SW キャッシュ構築のため）。
 
 ---
 
@@ -55,8 +61,13 @@ PCとスマホを**同じWi-Fi**に接続した状態で：
 ## 同梱物
 ```
 phone/
-├── swing_check.html        # 本体（単一HTML）
-├── vendor/vision_bundle.mjs, vendor/wasm/*   # MediaPipe Tasks Vision (JS/wasm)
+├── swing_check.html              # 本体（単一HTML）
+├── manifest.webmanifest          # PWA マニフェスト
+├── sw.js                         # Service Worker（オフラインキャッシュ）
+├── icon-192.png                  # アプリアイコン 192×192
+├── icon-512.png                  # アプリアイコン 512×512
+├── vendor/vision_bundle.js       # MediaPipe Tasks Vision (JS)
+├── vendor/wasm/*                 # MediaPipe wasm バイナリ
 └── models/pose_landmarker_{full,lite}.task   # 骨格モデル
 ```
 精度・履歴・IMU・複数球の自動切り出しは PC版（`analyze.py`）の担当です。
